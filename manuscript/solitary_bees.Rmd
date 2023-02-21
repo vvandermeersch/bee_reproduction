@@ -1,0 +1,1090 @@
+---
+title: Landscape floral resources provided by rapeseed correlate with next-year solitary bee reproduction in a national participatory monitoring program
+
+titlerunning: Landscape floral resources correlate with next-year solitary bee reproduction
+authorrunning: Van der Meersch et al.
+thanks: | 
+    Grants or other notes about the article that should go on the front 
+    page should be placed here. General acknowledgments should be placed at the
+    end of the article.
+
+authors: 
+- name: Victor Van der Meersch
+  address: Centre d'Ecologie et des Sciences de la Conservation (CESCO), Muséum National d'Histoire Naturelle, Centre National de la Recherche Scientifique, Sorbonne Université, Paris, France
+  
+- name: Olivier Billaud
+  address: Centre d'Ecologie et des Sciences de la Conservation (CESCO), Muséum National d'Histoire Naturelle, Centre National de la Recherche Scientifique, Sorbonne Université, Paris, France
+  
+- name: Magali San Cristobal
+  address: Dynamique et Ecologie des Paysages Agriforestiers (DYNAFOR), Institut national de recherche pour l'agriculture, l'alimentation et l'environnement, Université de Toulouse, Castanet Tolosan, France
+  
+- name: Aude Vialatte
+  address: Dynamique et Ecologie des Paysages Agriforestiers (DYNAFOR), Institut national de recherche pour l'agriculture, l'alimentation et l'environnement, Université de Toulouse, Castanet Tolosan, France
+  
+- name: Emmanuelle Porcher
+  address:  Centre d'Ecologie et des Sciences de la Conservation (CESCO), Muséum National d'Histoire Naturelle, Centre National de la Recherche Scientifique, Sorbonne Université, Paris, France
+  email: emmanuelle.porcher@mnhnfr
+
+keywords:
+- agriculture;
+- biodiversity;
+- citizen science;
+- Osmia;
+- solitary bees;
+- pollination;
+- floral ressource;
+
+
+abstract: |
+  Wild bees depend on floral resources available in the landscape, partly provided by mass flowering crops (MFCs), such as rapeseed or sunflower. To understand whether and to what extent these crops could help maintain bee populations on the long term, we investigated the inter-annual impact of MFC resources on solitary bee reproduction. We studied a large standardized citizen science dataset, in which farmers collected data on the  the abundance of mud-sealed tubes in trap nests, between 2012 and 2017, in nearly 600 fields distributed across France. We modelled the relation between bee nesting and landscape resources of the current and previous year, also taking local farming practices into account (conventional vs. organic farming). Solitary bee reproduction was positively correlated with the quantity of floral ressources provided by rapeseed cultivated the year preceding observations. Reproduction was also positively linked to the area of permanent meadows. On the contrary, we found a weakly significant negative relationship between sunflower cultivated the year preceding observations and bee reproduction. Our models also confirm that local practices should be taken into account when assessing the influence of landscape context, even though their effects were more difficult to interpret. We therefore show that solitary bee reproduction is likely to be positively and durably affected by rapeseed cover. A moderate cover of rapeseed may thus help to maintain solitary bee populations, in combination with semi-natural habitats, which provide more diverse food and nesting sites. 
+
+bibliography: bibliography.bib
+bibstyle: spphys
+# bibstyle options spbasic(default), spphys, spmpsci
+output: rticles::springer_article
+
+header-includes:
+- \usepackage{hyperref}
+- \usepackage{amsmath}
+- \usepackage{amssymb}
+- \usepackage{bm}
+- \usepackage{natbib}
+- \usepackage{xcolor}
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message=F, warning=F)
+knitr::opts_knit$set(root.dir = 'C:/Users/33651/Documents/Projets/MNHN/OAB/landscape_ecology_2021')
+
+library(glmmTMB) #model
+library(goeveg) #coefficient of variation
+library(performance) #check collinearity with VIF
+library(see) #plot VIF
+library(DHARMa) #diagnostic
+
+library(MuMIn) #variable selections
+
+
+library(texreg) #automatic table
+source(system.file("other_methods","extract.R",package="glmmTMB"))
+
+library(knitr) 
+library(kableExtra)
+
+library(ggplot2)
+library(ggcorrplot) #corrplot
+library(gridExtra) #arrange plots in one grid
+
+library(lubridate) #date formating
+
+library(boot) #bootstrapping
+library(stringr) #strwrap
+
+library(tidyr)
+library(dplyr)
+
+#Spatial
+library(sf)
+library(raster)
+library(units)
+library(lwgeom) #perimeter
+
+library(ggeffects)
+library(ggpubr)
+library(plyr)
+```
+
+```{r loading.data, include=FALSE}
+
+###########
+# READ ME #
+###########
+
+#One can decide to launch all the script : 
+##In this case, set LaunchAll = TRUE
+LaunchAll = FALSE
+##If LaunchAll=TRUE, option : compute weather variables : TIME CONSUMING /!\
+ComputeWeather = FALSE
+##If FALSE, weather data will be loaded and not computed
+
+#Or you can directly load the needed dataframes
+if(!LaunchAll){
+  load("data/r_data/Data_SB_model.Rdata")
+}
+
+source("functions/create_table2.R")
+Data_SB <- create_table2(species="bees", cultivation="All", 
+                        prep_parcels=TRUE, prep_species=TRUE)
+
+
+Data_SB_model <- Data_SB_model[Data_SB_model$conduite!="AUTRE",]
+
+Data_SB_model <- Data_SB_model[Data_SB_model$TYPEPARCELLELIB=="GRANDE-CULTURE" | Data_SB_model$TYPEPARCELLELIB=="PRAIRIE",]
+
+
+
+```
+
+
+```{r creating.data, include=FALSE, eval=LaunchAll}
+
+#LOADING SPATIAL DATA
+
+##RPG v2
+RPG_2015 <- st_read(dsn=paste0("data/spatial/RPG/",2015), layer="RPG_light")
+RPG_2016 <- st_read(dsn=paste0("data/spatial/RPG/",2016), layer="RPG_light") %>% st_set_precision(1000000) %>% lwgeom::st_make_valid()
+RPG_2017 <- st_read(dsn=paste0("data/spatial/RPG/",2017), layer="RPG_light")
+
+##RPG v1
+ilots2015 <- st_read(dsn=paste0("data/spatial/RPG/",2015), layer="ilots_light")
+ilots2016 <- st_read(dsn=paste0("data/spatial/RPG/",2016), layer="ilots_light")
+ilots2017 <- st_read(dsn=paste0("data/spatial/RPG/",2017), layer="ilots_light")
+source("functions/conv_v1.R") #function to convert RPG v2 to v1
+RPG_v1_2011 <- st_read(dsn=paste0("data/spatial/RPG/",2011), layer="RPG_light")
+RPG_v1_2012 <- st_read(dsn=paste0("data/spatial/RPG/",2012), layer="RPG_light")
+RPG_v1_2013 <- st_read(dsn=paste0("data/spatial/RPG/",2013), layer="RPG_light")
+RPG_v1_2014 <- st_read(dsn=paste0("data/spatial/RPG/",2014), layer="RPG_light")
+RPG_v1_2015 <- conv_v1(RPG_2015, ilots2015)
+RPG_v1_2016 <- conv_v1(RPG_2016, ilots2016)
+RPG_v1_2017 <- conv_v1(RPG_2017, ilots2017)
+
+##CORINE LAND COVER
+CLC=st_read(dsn=paste0("data/spatial/clc/CLC_2018"), layer="CLC_forests")
+
+##EOBS WEATHER RASTER
+eobs_rast_prec <- stack("data/spatial/eobs/rr_ens_mean_0.1deg_reg_v20.0e.nc")
+eobs_rast_temp <- stack("data/spatial/eobs/tg_ens_mean_0.25deg_reg_v20.0e.nc")
+
+
+
+
+#LOADING OAB DATA
+
+source("functions/create_table2.R")
+Data_SB <- create_table2(species="bees", cultivation="All", 
+                        prep_parcels=TRUE, prep_species=TRUE)
+
+
+##Selecting variables
+Data_SB_model <- (Data_SB[,c("AB_TOT","nb_terre", "ANNEE_OBS",
+                               "LATITUDE","LONGITUDE", "DEP",
+                               "ID_SGBD_parcelle","ID", "coordcor", "Date.de.passage", "Date.de.pose", 
+                               "TYPEPARCELLELIB", "Traitement.Tot", "Fertilisation.minerale", "conduite",
+                               "BFOSSE", "BHAIE", "BBANDEENHERBEE",
+                               "PROUTE", "PBANDEHERBEE", "PFOSSE", "PHAIEJEUNE", "PHAIEANCIENNE",
+                               "PETANG", "PRUCHER", "TYPE_PRAIRIE", "pol_attract")])
+
+##Removing NA, except for TYPE_PRAIRIE and pol_attract
+Data_SB_model <- Data_SB_model %>% filter_at(vars("AB_TOT", "nb_terre", "ANNEE_OBS",
+                               "LATITUDE","LONGITUDE", "DEP",
+                               "ID_SGBD_parcelle","ID", "coordcor", "Date.de.passage", "Date.de.pose", 
+                               "TYPEPARCELLELIB", "Traitement.Tot", "Fertilisation.minerale", "conduite",
+                               "BFOSSE", "BHAIE", "BBANDEENHERBEE",
+                               "PROUTE", "PBANDEHERBEE", "PFOSSE", "PHAIEJEUNE", "PHAIEANCIENNE",
+                               "PETANG", "PRUCHER"),all_vars(!is.na(.)))
+
+
+##To create a buffer around each sampled field, we need to keep only sampling points with real coordinates
+Data_SB_model <- Data_SB_model[Data_SB_model$coordcor==FALSE,]
+Data_Parcels.SC <- Data_Parcels[Data_Parcels$coordcor==FALSE,]
+
+##Cleaning data
+Data_SB_model <- Data_SB_model[Data_SB_model$ID_SGBD_parcelle!=1324 & 
+                                 Data_SB_model$ID_SGBD_parcelle!=2130 & 
+                                 Data_SB_model$ID_SGBD_parcelle!=445,]
+
+Data_SB_model$ID_SGBD_parcelle <- as.factor(Data_SB_model$ID_SGBD_parcelle)
+
+Data_SB_model <- Data_SB_model[month(Data_SB_model$Date.de.passage)!=2,] #Removing points in february 
+
+
+##Date format modification
+Data_SB_model$Date.de.passage <- format(strptime(Data_SB_model$Date.de.passage,  format="%d/%m/%Y  %H:%M:%S"), "%Y-%m-%d") 
+Data_SB_model$Date.de.pose <- format(strptime(Data_SB_model$Date.de.pose,  format="%d/%m/%Y  %H:%M:%S"), "%Y-%m-%d")
+
+
+##Creating variables
+Data_SB_model$BDIV <- Data_SB_model$BHAIE + Data_SB_model$BBANDEENHERBEE + Data_SB_model$BFOSSE
+Data_SB_model$nbjour <- yday(Data_SB_model$Date.de.passage)
+
+levels(Data_SB_model$conduite) <- c("AUTRE", "1BIOLOGIQUE", "0CONVENTIONNELLE")
+Data_SB_model$conduite <- as.character(as.factor(Data_SB_model$conduite))
+
+
+# COMPUTING FOREST LANDSCAPE VARIABLES
+
+source("functions/clc_compute.R")
+Data_SB_model <- clc_compute(Data_SB_model, Data_Parcels.SC, 
+                             buffer=250, cultivation='All')
+
+Data_SB_model <- Data_SB_model %>%
+  mutate_at(vars(CLC_for_area_311, CLC_for_area_312, CLC_for_area_313, CLC_for_perim), ~replace_na(., 0))
+
+Data_SB_model$CLC_for_area = Data_SB_model$CLC_for_area_311 + Data_SB_model$CLC_for_area_312 + Data_SB_model$CLC_for_area_313
+
+
+# COMPUTING WEATHER VARIABLES
+
+if(ComputeWeather){
+  source("functions/eobs_interval.R")
+
+  ##between start date and passage date
+  Data_SB_model <- eobs_interval(Data_SB_model, 'prec', begin="02-20")
+  Data_SB_model <- eobs_interval(Data_SB_model, 'temp', begin="02-20")
+  ##between start date and passage date/or end date
+  Data_SB_model <- eobs_interval(Data_SB_model, 'prec', begin="02-20", end="05-31")
+  Data_SB_model <- eobs_interval(Data_SB_model, 'temp', begin="02-20", end="05-31")
+}
+
+if(!ComputeWeather){
+  load("data/r_data/Data_SB_weather.Rdata")
+  Data_SB_model <- left_join(Data_SB_model, Data_SB_weather)
+}
+
+
+
+#COMPUTING FARMING LANDSCAPE VARIABLES
+
+source("functions/area_v1.R")
+
+##Current year : buffer of 250 meters
+Data_SB_model <- area_v1(Data_SB_model, Data_Parcels.SC, years=c(2012, 2013, 2014, 2015,2016,2017), 
+                             buffer=250, cultivation="All")
+Data_SB_model <- Data_SB_model[!is.na(Data_SB_model$area_corn),] #still some false coordinates...
+
+##Previous year : buffer of 250 meters or 1000 meters
+Data_SB_model_250 <- Data_SB_model
+Data_SB_model_250 <- area_v1(Data_SB_model_250, Data_Parcels.SC, years=c(2012, 2013, 2014, 2015,2016,2017), 
+                             buffer=250, cultivation="All", previous=TRUE)
+
+Data_SB_model <- area_v1(Data_SB_model, Data_Parcels.SC, years=c(2012, 2013, 2014, 2015,2016,2017), 
+                             buffer=1000, cultivation="All", previous=TRUE)
+
+
+```
+
+\newpage
+
+# Introduction {#intro}
+
+Agriculture and biodiversity are inter-linked. The observed trend toward the intensification of farming practices and the homogenization of landscapes over the past decades have triggered significant negative impacts on insect diversity and abundance [@benton2002; @sanchez2019]. In particular, pollinators are known to decline because of several human-related drivers, including habitat loss and use of agrochemicals [@potts2010; @vanbergen2013]. This major loss of insects could have negative effects on ecosystem functioning, as insects play a central role in a variety of processes, including pollination: 80% of wild plants are estimated to depend on animals for pollination [@ollerton2011], and 35% of global agricultural production comes from crops that depends on pollinators [@klein2007]. In turn, many pollinator species depend at least partially on floral resources availability and accessibility [@potts2003]. The spatial and temporal distribution of floral resources is therefore essential for pollinators, especially for central place foragers such as wild bees, which are not spared from human disturbances [@biesmeijer2006; @goulson2008; @potts2010; @burkle2013; @woodcock2016] and cannot follow the seasonality of flowering from one area to another. They may be more efficient pollinators of wild plants and crops than honey bees [@garibaldi2014; @mallinger2014], and thus important for supporting  pollinator-dependent crops and sustaining pollination service in agricultural areas. [@dewenter2003; @peixoto2014]
+
+In agricultural landscapes, floral resources for pollinators are provided both by wild plants and mass flowering crops (MFCs): the former provide less abundant but more constant resources than crops, while the latter provide massive amounts of resources but during a restricted period of flowering. Although wild bees seem to depend more on wild floral resources than on MFCs [@rollin2013], many of them, including solitary bees, are still known to use MFCs [@jauker2012a; @lefeon2013]. Besides, the balance between positive and negative effects of MFCs on wild bees remains unclear. On the one hand, MFCs provide both pollen and nectar resources that positively affect solitary bee species richness [@diekotter2014], abundance [@lefeon2013; @riedinger2015] and reproduction [@holzschuh2012; @jauker2012b], even though some studies found a negative effect [@holzschuh2016; @shaw2020]. On the other hand, MFCs are often associated with intensive agriculture, which comes with a simplification of landscapes, including fewer semi-natural landscape elements providing cavities for nesting, as well as more frequent use of pesticides, which may have lethal and sublethal effects on solitary bees [@biddinger2013; @artz2015; @rundlof2015; @sgolastra2017; @azpiazu2019]. Moreover, by favoring generalist pollinators, a high proportion of MCF in the landscape may disrupt local plant-pollinator interactions [@diekotter2010].
+
+
+The observed contrasting relationships between MFCs and solitary bee abundance or reproduction may be due in part to various source of heterogeneity in the aforementioned studies, which we we aim to control in the current study. First, these studies were performed in a variety of contexts, in terms of landscape structure, farming practices or climate. In order to generalize the actual role of MFCs, we here analyse a unique dataset obtained across a wide range of agro-environmental contexts. *Another reason for the contrasting effects of MFCs on wild bees may be related to the variety of ways both bee populations and floral resources are characterized. To characterize bee populations, one can measure either the presence of adults, using e.g. pan traps, or nesting activity, using trap nests.* [**Aude propose de supprimer**] To characterize the effects of MFCs, most researches studied either immediate impacts (MFCs generally attract bees,  with sometimes a positive effect on breeding, see @holzschuh2012, @lefeon2013, and @diekotter2014) or year-to-year effects (MFCs may influence bee abundance the following year, see @jauker2012b and @riedinger2015). The inter-annual effects of MFCs on the fitness of wild bees populations is essential for their maintenance on the long term. Understanding the balance between positive effects (through the delivery of floral resources) and negative effects (through possible pesticide contamination) according to agro-environmental contexts is necessary to inform future agro-ecological management of these crops. *To our knowledge, few studies have been conducted into the year-to-year impacts of MFCs on wild bee populations, and they are often limited to a small number of observations over relatively small areas.* [**Aude propose de supprimer**]
+
+This study investigates the relationship between the reproduction of solitary bee populations and mass-flowering crop cover over a whole country. Our goal is to complement previous studies, on the one hand by examining year-to-year effects to assess the long term impact of MFCs, and on the other hand by considering a broad area and a variety of contexts. Our originality is to rely on a citizen science program with a large number of sites (nearly 600 fields) all over France. We focus on immediate and year-to-year landscape correlations with bee reproduction.  We aimed to assess whether the cover of two widespread MFCs (rapeseed and sunflower) was correlated with solitary bee nesting both in the year of monitoring and in the following year and thus might be able to support bee populations through time.
+
+
+# Material and methods {#meth}
+
+## Participatory monitoring of solitary bees in fields {#meth:1}
+
+The study was conducted in fields monitored by farmers all over mainland France between 2012 and 2017, within the framework of the Farmland Biodiversity Observatory (FBO). The FBO targets several taxonomic groups to identify farming practices and landscape elements that promote farmland biodiversity [@billaud2020]. To our knowledge, this is one of the first national biodiversity monitoring programs to use a participatory approach involving farmers. 
+Over a total of `r length(unique(Data_SB$ID_SGBD_parcelle))` sites, we selected `r length(unique(Data_SB_model$ID_SGBD_parcelle))` sites, including `r length(unique(Data_SB_model[Data_SB_model$TYPEPARCELLELIB=="GRANDE-CULTURE",]$ID_SGBD_parcelle))` field crops and `r length(unique(Data_SB_model[Data_SB_model$TYPEPARCELLELIB=="PRAIRIE",]$ID_SGBD_parcelle))` meadows, for which all required environmental variables (see below), including geographical coordinates, were well reported. Some sites were monitored several years in a row (see below for more details). 
+
+
+## Trap nests in field boundary 
+
+All farmers set up two standardized trap nests 5 meter away in each studied field boundary. A trap nest consisted of 32 cardboard tubes that were fixed facing south, on a wooden post, 1 meter above the ground [@billaud2020]. Farmers monitored nest occupancy, an indicator for bee reproductive performance, by counting sealed tubes. They also reported a proxy for bee diversity by identifying the sealing material (mud, chewed leaves, trichomes of wooly plants...). Theoretically, trap nests were meant to be monitored once a month between March and November, but some observers tended to forget some of the surveys. Within a year, `r test <- aggregate(numeric(nrow(Data_SB_model)), Data_SB_model[c("ID_SGBD_parcelle", "ANNEE_OBS")], length)` `r round(nrow(test[test$x>1,])/nrow(test)*100,1)`% of sites were sampled at least twice, and `r round(nrow(test[test$x>4,])/nrow(test)*100,0)`% at least five times. Accordingly, we did not summarize data within a year, but chose to use all `r nrow(Data_SB_model)` observations, i.e. one count in a given month per trap nest.
+
+We focused our study on the most abundant category of sealing material, i.e. mud, which represents `r round(sum(Data_SB_model$nb_terre)/sum(Data_SB_model$AB_TOT)*100,0)`% of observations. These mud-sealed tubes are likely to be made mainly by *Osmia* bees [@linsley1958], although some *Megachile* may also use mud for nest building [e.g. subgenus *Chalicodoma*, see @michener2007].
+
+## Environmental variables
+
+#### Landscape variables 
+
+We used the national cartographic field registry (*Registre parcellaire graphique*, RPG) to map each crop type within a buffer around each study site. We chose the size of the buffer *a priori* on the basis of ecological knowledge of solitary bees instead of testing multiple spatial extents and taking the one that best predicts the response, because the latter approach is sometimes biased [@jackson2015]. The area of each crop in the buffer was calculated using the R package *sf* [@edzer2018].
+
+We computed the area of the two main MFCs (rapeseed and sunflower) both in the sampling year and the previous year. For the sampling year calculation, we used a 250m-radius buffer since the distance at which half of the population discontinues foraging (few hundred meters) is more relevant than the species specific maximum foraging  distance [@zurbuchen2010]. For the previous year calculation, we decided to use a 1000m-radius buffer because the dispersal distance, from the emergence site to the nesting site, is larger than the median foraging distance of solitary bees. However, the choice of the buffer radius (250m or 1,000m) for the area of MFCs the year preceding the observation did not influence the results (not shown).
+
+In order to take into account other floral resources and nesting opportunities, we also computed the area of temporary meadows for both sampling year and previous year, and the area of orchards and permanent meadows in the sampling year only (because these land uses change little through time). Finally, as forest margins are known to influence wild bees [@bailey2014; @joshi2016; @odanaka2020], we also computed the length of forest edge in the buffer using the Corine Land Cover database provided by the European Environmental Agency. 
+
+#### Local variables
+
+For each field, farmers reported surrounding linear elements (hedgerow, grassed strip, road...) and farming practices (use of crop-protection products, fertilization, organic farming...). *To avoid multicollinearity, we did not include the type of crop sown in the neighbouring field  because it was indirectly take into account in the landscape variables.* For bee observations located in a field crop edge, we characterized farming practices in the field by using the farming system only (conventional vs. organic farming) because of the heterogeneity of the returns on the local agricultural practices implemented. For bee observation located in a meadow edge, we used the type of meadow (temporary vs. permanent).
+
+#### Control variables
+
+Because solitary bees, as many pollinators, are highly sensitive to wheather conditions [@vicens2000], we assessed local weather conditions with the E-OBS database from the European Climate Assessment & Dataset project [@cornes2018]. Most mud-sealed tubes are occupied by *Osmia*, which emerge from their nests and fly early in the year [@bosch2008]. To assess the spring weather conditions, when *Osmia* become reproductively active and may build nests, we chose to compute the mean temperature and the sum of precipitation between the 20\textsuperscript{th} of February and either the 31\textsuperscript{st} of May or the sampling date, whichever came first. Since we did not know the exact nest installation date, we also included the number of days between the beginning of the year and the observation date as a proxy for the period of time during which a nest is installed. These three variables (mean temperature, sum of precipitation and time) were included in the model below as control variables, i.e. we checked that their effect was consistent with expectations.
+
+
+## Statistical analysis
+
+
+The correlations between landscape resources and the presence/absence and abundance of mud-sealed tubes in trap nests were assessed using two hurdle mixed models, one for each field edge type (field crop and meadow), in R [@rcore2020] on RStudio [@rstudio2019] with the *glmmTMB* package [@mollie2017]. Hurdle models are two-stage models which provide a way of modeling the excessive proportion of zero values and are known to perform well for ecological data [@potts2006]. The first part models the presence/absence of mud-sealed tubes  with a probability of presence $\pi$, and the second models their abundance, with mean $\mu$, conditional on the presence of mud-sealed tubes. Compared to zero-inflation models, a hurdle model assumes that there is a single process by which a zero can be produced.
+
+\bigbreak
+
+Let  $Y_{i,j,k}$ be a random variable that represents the number of mud-sealed tubes observed during the $k^{th}$ observation in plot $j$ of year $i$.  The hurdle mixed model is the following:
+
+\begin{equation*}
+\Pr\{Y_{i,j,k} = y | \pi_{i,j,k},(\theta, \mu_{i,j,k}) \} = \begin{cases} 
+    \pi_{i,j,k}, \; y = 0 \\   
+    (1-\pi_{i,j,k}) \frac{NegBin\{ y, (\theta, \mu_{i,j,k})}{1-NegBin\{0, (\theta, \mu_{i,j,k})}, \; y > 0
+\end{cases} 
+\end{equation*}
+\begin{align*}
+logit(\Pi)=X_{zero}*B_{zero}+S_{zero} 
+&&
+logit(M)=X_{count}*B_{count}+S_{count} 
+\end{align*}
+
+with $\Pi$ and $M$ vectors of probabilities $\pi_{i,j,k}$ and means $\mu_{i,j,k}$, $X_{zero}$ and $X_{count}$ vectors of fixed effects listed in \hyperlink{appendix-a}{Appendix A} with their related vectors of coefficients $B_{zero}$ and $B_{count}$, $S_{zero}$ (resp $S_{count}$) the  vector of site random effects $s_j^{zero} \sim \mathcal{N}(0, \sigma_{zero}^2)$ (resp. $s_j^{count} \sim \mathcal{N}(0, \sigma_{count}^2)$), and $\theta$ the dispersion parameter of the negative binomial.
+
+\medbreak
+
+In our models, we included five types of variables with fixed effects, which are listed in \hyperlink{appendix-a}{Appendix A}: (1) 4 variables related to the quantity of floral resources provided by MFCs (rapeseed and sunflower in the current and previous year), (2) 7 variables related to the semi-natural elements likely to provide floral resources and nesting opportunities, (3) 8 variables describing local practices in the field neighbouring the monitoring site and (4) their interactions with landscape resources, and finally (5) 3 control variables. We also included a site random effect to take into account the non-independance of repeated observations in some fields, within a year and between years (`r test <- unique(Data_SB_model[c("ID_SGBD_parcelle", "ANNEE_OBS")])``r test<-aggregate(numeric(nrow(test)), test[c("ID_SGBD_parcelle")], length)``r nrow(test[test$x>1,])` sites were monitored at least two consecutive years). 
+All variables were standardized and centered.
+
+```{r modelespartypes1000, cache=T}
+
+
+#FIELD CROPS
+
+dat=Data_SB_model[Data_SB_model$TYPEPARCELLELIB=="GRANDE-CULTURE",]
+
+
+dat.i=data.frame(a_r=(dat$area_rapeseed), a_n1_r=(dat$area_n1_rapeseed), a_s=(dat$area_sunflower), 
+               a_n1_s=(dat$area_n1_sunflower), c=dat$conduite, a_p=(dat$area_PM), p_f=(dat$CLC_for_perim),
+               pha=factor(dat$PHAIEANCIENNE), pro=factor(dat$PROUTE), 
+               temp=(dat$temp_mf), prec=(dat$prec_mf), nj=(dat$nbjour), ID_f=dat$ID_SGBD_parcelle, ID=dat$ID)
+
+dat.i=sjmisc::std(dat.i)
+
+dat.fc=data.frame(nb_t=dat$nb_terre, dat.i)
+
+
+model.count <- formula(nb_t ~
+                         a_r_z +  a_n1_r_z +
+                         a_s_z +  a_n1_s_z +
+                         c +
+                         c:a_r_z + c:a_n1_r_z + 
+                         c:a_s_z + c:a_n1_s_z + 
+                         c:a_p_z +
+                         a_p_z +
+                         pha+
+                         temp_z +  prec_z +
+                         nj_z+
+                         (1|ID_f))
+
+model.zero <- formula(~  a_r_z +  a_n1_r_z +
+                         a_s_z +  a_n1_s_z +
+                         c +
+                         c:a_r_z + c:a_n1_r_z + 
+                         c:a_s_z + c:a_n1_s_z + 
+                         c:a_p_z +
+                         a_p_z + p_f_z +
+                         pha+pro+
+                         temp_z +  prec_z +
+                         nj_z+
+                         (1|ID_f))
+
+
+fieldcrops1000.inter.fit <- glmmTMB(model.count, ziformula = model.zero, 
+                              family = truncated_nbinom2, data=dat.fc)
+
+save(fieldcrops1000.inter.fit, file="fieldcrops.modele.Rdata")
+
+
+#PERMANENT MEADOWS
+
+dat=Data_SB_model[Data_SB_model$TYPEPARCELLELIB=="PRAIRIE",]
+
+
+dat.i=data.frame(nb_t=dat$nb_terre, 
+                  a_r=(dat$area_rapeseed), a_n1_r=(dat$area_n1_rapeseed), 
+                  a_s=(dat$area_sunflower), a_n1_s=(dat$area_n1_sunflower), 
+                  tp=dat$TYPE_PRAIRIE, 
+                  a_p=(dat$area_PM), a_tm=(dat$area_TMF), a_n1_tm=(dat$area_n1_TMF),
+                  phj=factor(dat$PHAIEJEUNE), pha=factor(dat$PHAIEANCIENNE), pro=factor(dat$PROUTE), 
+                  temp=(dat$temp_mf), prec=(dat$prec_mf), 
+                  nj=(dat$nbjour), ID_f=dat$ID_SGBD_parcelle)
+
+dat.i=sjmisc::std(dat.i)
+
+dat.pm=data.frame(nb_t=dat$nb_terre, dat.i)
+
+model.count <- formula(nb_t ~ 
+                         a_r_z + a_n1_r_z +
+                         a_s_z + a_n1_s_z +
+                         tp +
+                         a_p_z + a_tm_z + a_n1_tm_z +  
+                         pro +
+                         temp_z + prec_z + 
+                         nj_z +
+                         (1|ID_f))
+
+model.zero <- formula(~ a_r_z + a_n1_r_z +
+                        a_s_z + a_n1_s_z +
+                        tp +
+                        a_p_z + a_tm_z + a_n1_tm_z + 
+                        phj + pha +
+                        temp_z + prec_z + 
+                        nj_z +
+                        (1|ID_f))
+
+meadows1000.fit <- glmmTMB(model.count, ziformula = model.zero, 
+                  family = truncated_nbinom2, data=dat.pm)
+
+save(meadows1000.fit, file="meadows.modele.Rdata")
+
+
+
+
+
+sum.fc <- summary(fieldcrops1000.inter.fit)
+sum.md <- summary(meadows1000.fit)
+
+simulation.fc <- simulateResiduals(fittedModel = fieldcrops1000.inter.fit)
+simulation.md <- simulateResiduals(fittedModel = meadows1000.fit)
+
+
+```
+
+\bigbreak
+
+We first analysed full models (see \hyperlink{appendix-a}{Appendix A}). Then, we ran an automatic selection with the R package *MuMIn* [@barton2020], using the corrected Akaike information criteria (AICc) and fixing several variables of interest for our main questions. Variables selected through this process are in italics in Table \ref{tab:output}. We also checked the variance inflation factor with the R package *performance* [@ludecke2020] to ensure there was no multicollinearity (see \hyperlink{appendix-b}{Appendix B}). 
+We used the *DHARMa* package [@dharma2020] for residual diagnostics.
+Residual overdispersion and zero-inflation were acceptable upon visual inspection (see \hyperlink{appendix-c}{Appendix C}). The Durbin-Watson test was not significant for most of the residuals, we thus decided to ignore temporal autocorrelation (see \hyperlink{appendix-d}{Appendix D}). 
+
+Model outputs were formatted with the help of the *texreg* package [@leifeld2013]. Finally, we used the *ggeffects* package [@ludecke2018] to build output figures.
+
+```{r table.covariates, eval=F}
+
+covariates.zero = c("Area of rapeseed (current year)", "Area of rapeseed (previous year)", 
+                    "\\it Area of sunflower (current year)", "\\it Area of sunflower (previous year)", 
+                    "Area of orchards",
+                    "Area of permanent meadows", "Area of temporary meadows (current year)", "Area of temporary meadows (previous year)",
+                    "Perimeter of forests", 
+                    "\\it Young hedgerow", "\\it Old hedgerow", "\\it Grassed strip", "Road",
+                    "Organic farming", "Permanent meadow",
+                    "Temperature", "Precipitation", "Number of days")
+covariates.count = c("Area of rapeseed (current year)", "Area of rapeseed (previous year)", 
+                    "\\it Area of sunflower (current year)", "\\it Area of sunflower (previous year)", 
+                    "Area of orchards",
+                    "Area of permanent meadows", "Area of temporary meadows (current year)", "Area of temporary meadows (previous year)",
+                    "Perimeter of forests", "Organic farming", "Permanent meadow",
+                    "\\it Grassed strip","\\it Young hedgerow", "\\it Old hedgerow", "Road",
+                    "Temperature", "Precipitation")
+
+table.covariates <-data.frame(
+  c(rep("$X_{zero}$", 18), rep("$X_{count}$", 17)),
+  c(rep("Landscape variables", 9), rep("Local variables", 6), rep("Weather", 2), "Time", rep("Landscape variables", 9), rep("Local variables", 6), rep("Weather", 2)),
+  c(covariates.zero, covariates.count),
+  model.fc=c("X","X","X", "X", "", "X", "X","X","X",     "X", "X", "X", "X","X","", "X", "X", "X",
+             "X","X","X", "X", "", "X", "X","X","X",     "X", "X", "X", "X","X","", "X", "X"),
+  model.md=c("X","X","X", "X", "X", "X", "X","X","X",    "X", "X", "", "X","","X", "X", "X", "X",
+             "X","X","X", "X", "X", "X", "X","X","X", "X", "X", "", "X","","X", "X", "X"),
+  model.orc=c("X","X","X", "X", "X", "X", "X","X","X",     "X", "X", "X", "X","X","", "X", "X", "X",
+             "X","X","X", "X", "X", "X", "X","X","X",     "X", "X", "X", "X","X","", "X", "X"),
+  model.vin=c("X","X","", "", "", "X", "X","X","X",     "X", "X", "X", "X","X","", "X", "X", "X",
+             "X","X","", "", "", "X", "X","X","X",     "X", "X", "X", "X","X","", "X", "X")
+  )
+
+
+kable(table.covariates, "latex", booktabs = T, align = "c", col.names=c("","Category", "Variable", "Field crops", "Meadows", "Orchards", "Vineyards"), caption = "\\textbf{TABLEAU TEMPORAIRE POUR EXEMPLE.} Fixed effects included in our models. Variables in italic were automatically selected with AICc.", escape = FALSE)%>%
+  kable_styling(latex_options =c("hold_position"))%>%
+  row_spec(c(9,15, 17, 18, 27, 33), extra_latex_after = "\\addlinespace[0.2cm]")%>%
+  row_spec(18, hline_after=T)%>%
+  collapse_rows(columns = 1:2, latex_hline = "none", valign = "middle")
+
+
+```
+
+# Results
+
+```{r output, echo=F, results='asis', eval=F}
+
+coefmap=list( 
+             "a_r"="Area of rapeseed (current year)", "a_n1_r"="Area of rapeseed (previous year)",
+             "a_s"="Area of sunflower (current year)", "a_n1_s"="Area of sunflower (previous year)",
+
+             "c1BIOLOGIQUE"="Organic farming", "tpPermanente"="Permanent meadow",
+             
+             "a_p"="Area of permanent meadows", "a_tm"="\\it Area of temporary meadows (current year)",
+             "a_n1_tm"="\\it Area of temporary meadows (previous year)",
+             "p_f"="\\it Perimeter of forests",
+             "pro"="\\it Road",
+             "PBANDEHERBEE"="Grassed strip", "phj"="\\it Young hedgerow", "pha"="\\it Old hedgerow",
+             
+             "a_r:c1BIOLOGIQUE"="Area of rapeseed (cur. year):Organic farming", 
+             "a_n1_r:c1BIOLOGIQUE"="Area of rapeseed (prev.. year):Organic farming", 
+             "a_s:c1BIOLOGIQUE"="Area of sunflower (cur. year):Organic farming", 
+             "a_n1_s:c1BIOLOGIQUE"="Area of sunflower (prev. year):Organic farming", 
+             "c1BIOLOGIQUE:a_p"="Area of permanent meadows:Organic farming",
+             
+             "temp"="Temperature", "prec"="Precipitation",
+             "nj"="\\it Number of days",
+             
+             
+             
+             "zi_a_r"="Area of rapeseed (current year) ", "zi_a_n1_r"="Area of rapeseed (previous year) ",
+             "zi_a_s"="Area of sunflower (current year) ", "zi_a_n1_s"="Area of sunflower (previous year) ",
+ 
+             "zi_c1BIOLOGIQUE"="Organic farming ", "zi_tpPermanente"="Permanent meadow ",
+             
+             "zi_a_p"="Area of permanent meadows ", 
+             "zi_a_tm"="\\it Area of temporary meadows (current year) ", "zi_a_n1_tm"="\\it Area of temporary meadows (previous year) ",
+             "zi_p_f"="\\it Perimeter of forests ",
+             "zi_pro"="\\it Road ", 
+             "zi_PBANDEHERBEE"="\\it Grassed strip ", "zi_phj"="\\it Young hedgerow ", "zi_pha"="\\it Old hedgerow ",
+             "zi_PETANG"="Pond ", "zi_PRUCHER"="Apiary ",
+             "zi_PBANDEHERBEE:PHAIEJEUNE"="Grassed strip:Young hedgerow ", "zi_PBANDEHERBEE:PHAIEANCIENNE"="Grassed strip:Old hedgerow ",
+             
+             "zi_a_r:c1BIOLOGIQUE"="Area of rapeseed (cur. year):Organic farming ", 
+             "zi_a_n1_r:c1BIOLOGIQUE"="Area of rapeseed (prev.. year):Organic farming ", 
+             "zi_a_s:c1BIOLOGIQUE"="Area of sunflower (cur. year):Organic farming ", 
+             "zi_a_n1_s:c1BIOLOGIQUE"="Area of sunflower (prev. year):Organic farming ", 
+             "zi_c1BIOLOGIQUE:a_p"="Area of permanent meadows:Organic farming ",
+             
+             "zi_temp"="Temperature ", "zi_prec"="Precipitation ", 
+             "zi_nj"="Number of days ")
+
+# modelnames = c("Field crops", "Meadows", "Orchards", "Vineyards")
+# 
+# texreg(list(fieldcrops1000.fit, meadows1000.fit, orchards1000.fit, vineyards1000.fit),
+#        stars = c(0.001, 0.01, 0.05), bold = 0.05, custom.coef.map = coefmap, custom.model.names=modelnames, 
+#        caption = "\\textbf{TABLEAU TEMPORAIRE POUR EXEMPLE.} Model ouputs. Standard error are provided in parenthesis. Parameters with a p-value$<$0.05 are reported in bold.",
+#        single.row = TRUE, caption.above = T, groups = list("\\bf{Count model}" = 1:21, "\\bf{Zero model}" = 22:40), 
+#        float.pos="H", no.margin = F, booktabs =T, use.packages = F, scalebox=0.79,
+#        label="tab:output")
+
+modelnames = c("Field crops", "Meadows")
+texreg(list(fieldcrops1000.inter.fit, meadows1000.fit),
+       stars = c(0.001, 0.01, 0.05), bold = 0.05, custom.coef.map = coefmap, custom.model.names=modelnames, 
+       caption = "\\textbf{AVEC INTERACTIONS.} Model ouputs. Standard error are provided in parenthesis. Parameters with a p-value$<$0.05 are reported in bold. Automatically selected variables are in italic.",
+       single.row = TRUE, caption.above = T, groups = list("\\bf{Count model}" = 1:19, "\\bf{Zero model}" = 20:40), 
+       float.pos="H", no.margin = F, booktabs =T, use.packages = F, scalebox=0.79,
+       label="tab:output")
+
+
+
+
+```
+
+
+
+\begin{table}
+\caption{Output of hurdle models examining the relationship between the presence of mud-sealed tubes ("Zero model") or their abundance conditional on presence ("Count model") and environmental variables. The table shows the parameter estimates, with standard errors in parentheses, after automatic selection of variables. Non-italicized variables were fixed, while italicized variables are those that were retained during the automatic selection process. Parameters with a p-value$<$0.05 are highlighted in bold. All variables were standardized and centered.}
+\begin{center}
+\scalebox{0.79}{
+\begin{tabular}{l c c c c}
+\toprule
+ & \multicolumn{2}{c}{\bf{Zero model}} & \multicolumn{2}{c}{\bf{Count model}} \\
+ & Field crops & Meadows & Field crops & Meadows \\
+\midrule
+\addlinespace[0.1cm]
+\bf{Landscape variables} \\
+\addlinespace[0.1cm]
+  \quad Area of rapeseed (current year)                 & $-0.14 \; (0.11)$                 & $0.31 \; (0.20)$ & $0.04 \; (0.06)$                 & $-0.04 \; (0.06)$                \\
+  \quad Area of rapeseed (previous year)                & $\mathbf{0.50} \; (0.15)^{***}$ & $0.13 \; (0.29)$ & $\mathbf{0.31} \; (0.09)^{***}$  & $\mathbf{0.24} \; (0.09)^{**}$   \\
+  \quad Area of sunflower (current year)                & $-0.07 \; (0.12)$                 & $-0.35 \; (0.30)$ & $0.03 \; (0.07)$                 & $0.10 \; (0.16)$                 \\
+  \quad Area of sunflower (previous year)               & $\mathbf{-0.41} \; (0.17)^{*}$    & $-0.16 \; (0.38)$ & $-0.04 \; (0.09)$                & $-0.10 \; (0.16)$                \\
+  \quad Area of permanent meadows                       & $\mathbf{0.69} \; (0.19)^{***}$ & $\mathbf{1.03} \; (0.38)^{**}$  & $\mathbf{0.27} \; (0.09)^{**}$   & $0.11 \; (0.11)$                 \\
+  \quad \it Area of temporary meadows (current year)    &                                  & $\mathbf{1.15} \; (0.46)^{*}$ &                                  & $\mathbf{-0.40} \; (0.16)^{*}$   \\
+  \quad \it Area of temporary meadows (previous year)   &                                  & $\mathbf{-1.09} \; (0.49)^{*}$ &                                  & $\mathbf{0.30} \; (0.15)^{*}$    \\
+  
+\addlinespace[0.2cm]
+\bf{Local variables} \\
+\addlinespace[0.1cm]
+  \quad Organic farming                                 & $0.48 \; (0.57)$                & & $-0.75 \; (0.43)$                &                                  \\
+  \quad Permanent meadow                                &                                  & $0.51 \; (0.40)$ &                                  & $-0.01 \; (0.18)$                \\
+\addlinespace[0.1cm]
+  \quad \it Perimeter of forests                        & $\mathbf{0.37} \; (0.19)^{*}$   &                                  \\
+  \quad \it Road                                        & $\mathbf{-0.68} \; (0.31)^{*}$    &  & & $\mathbf{-0.50} \; (0.20)^{*}$   \\
+  \quad \it Young hedgerow                              &                                  & $1.16 \; (0.66)$                \\
+  \quad \it Old hedgerow                                & $0.59 \; (0.31)$                & $0.41 \; (0.62)$ & $-0.14 \; (0.18)$     &       \\
+\addlinespace[0.2cm]
+\bf{Interactions} \\
+\addlinespace[0.1cm]
+  \quad Area of rapeseed (cur. year):Organic farming    & $-0.33 \; (0.82)$                 & & $\mathbf{-1.51} \; (0.70)^{*}$   &                                  \\
+  \quad Area of rapeseed (prev. year):Organic farming  & $0.72 \; (0.70)$                & & $-0.31 \; (0.31)$                &                                  \\
+  \quad Area of sunflower (cur. year):Organic farming   & $-0.27 \; (0.41)$                 & & $\mathbf{1.03} \; (0.46)^{*}$    &                                  \\
+  \quad Area of sunflower (prev. year):Organic farming  & $-0.79 \; (0.52)$                 & & $0.19 \; (0.28)$                 &                                  \\
+  \quad Area of permanent meadows:Organic farming       & $-0.30 \; (0.59)$                 & & $-0.07 \; (0.28)$                &                                  \\
+\addlinespace[0.2cm]
+\bf{Control variables} \\
+\addlinespace[0.1cm]
+  \quad Temperature                                     & $\mathbf{1.32} \; (0.14)^{***}$ & $\mathbf{1.79} \; (0.29)^{***}$ & $\mathbf{0.40} \; (0.07)^{***}$  & $\mathbf{0.24} \; (0.10)^{*}$    \\
+  \quad Precipitation                                   & $\mathbf{0.66} \; (0.11)^{***}$ & $\mathbf{1.44} \; (0.26)^{***}$ & $\mathbf{0.37} \; (0.05)^{***}$  & $\mathbf{0.25} \; (0.09)^{**}$   \\
+  \quad Number of days                                  & $\mathbf{0.60} \; (0.09)^{***}$ & $\mathbf{1.07} \; (0.16)^{***}$ & $0.02 \; (0.04)$                 & $\mathbf{0.18} \; (0.06)^{**}$   \\
+\addlinespace[0.2cm]
+  Variance of site random effect                 & `r round(sum.fc$varcor$zi$ID_f[1],2)`    & `r round(sum.md$varcor$zi$ID_f[1],2)` & `r round(sum.fc$varcor$cond$ID_f[1],2)`    & `r round(sum.md$varcor$cond$ID_f[1],2)` \\
+\addlinespace[0.1cm]
+\bottomrule
+\multicolumn{5}{l}{\scriptsize{$^{***}p<0.001$, $^{**}p<0.01$, $^*p<0.05$}} \\
+\multicolumn{5}{l}{\scriptsize{Field crops : trap nests set up in field crop edges ; Meadows : trap nests set up in meadow edges}}
+\end{tabular}
+}
+\label{tab:output}
+\end{center}
+\end{table}
+
+
+```{r plots, echo = FALSE, cache=T}
+
+
+
+dat.fc$pres <-0
+dat.fc[dat.fc$nb_t>0,]$pres <- 1
+
+
+mydf <- ggpredict(fieldcrops1000.inter.fit, terms = c("a_n1_r_z[all]"), type="zi.prob")
+
+dat.i <- dat.fc %>% dplyr::select(a_n1_r, a_n1_r_z) %>% distinct(round(dat.fc$a_n1_r_z, 3), .keep_all = TRUE) %>% dplyr::rename("x"="round(dat.fc$a_n1_r_z, 3)") %>% dplyr::select(-2)
+
+mydf <- left_join(mydf, dat.i)
+
+plot.zi.rapeseed <- ggplot(data=mydf)+
+  geom_ribbon(aes(x=a_n1_r, ymin=1-conf.low,ymax=1-conf.high),alpha=0.3)+
+  geom_line(aes(x=a_n1_r, y=1-predicted))+
+  geom_line(aes(x=a_n1_r, y=1-conf.high), col='red', linetype='dashed')+
+  geom_line(aes(x=a_n1_r, y=1-conf.low), col='red', linetype='dashed')+
+  geom_point(data=dat.fc, aes(x=a_n1_r, y=pres), size=0.5, alpha=0.1)+
+  theme(
+    legend.position="none",
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"))+
+  xlab("Rapeseed area (previous year)")+
+  ylab("Probability of presence")+
+  theme(axis.title.x=element_text(size=11), axis.title.y=element_text(size=11))
+
+
+mydf <- ggpredict(fieldcrops1000.inter.fit, terms = c("a_p_z[all]"), type="zi.prob")
+
+dat.i <- dat.fc %>% dplyr::select(a_p, a_p_z) %>% distinct(round(dat.fc$a_p_z, 3), .keep_all = TRUE) %>% dplyr::rename("x"="round(dat.fc$a_p_z, 3)") %>% dplyr::select(-2)
+
+mydf <- left_join(mydf, dat.i)
+
+plot.zi.meadow <- ggplot(data=mydf)+
+  geom_ribbon(aes(x=a_p, ymin=1-conf.low,ymax=1-conf.high),alpha=0.3)+
+  geom_line(aes(x=a_p, y=1-predicted))+
+  geom_line(aes(x=a_p, y=1-conf.high), col='red', linetype='dashed')+
+  geom_line(aes(x=a_p, y=1-conf.low), col='red', linetype='dashed')+
+  geom_point(data=dat.fc, aes(x=a_p, y=pres), size=0.5, alpha=0.1)+
+  theme(
+    legend.position="none",
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"))+
+  xlab("Permanent meadow area")+
+  ylab("Probability of presence")+
+  theme(axis.title.x=element_text(size=11), axis.title.y=element_text(size=11))
+
+mydf <- ggpredict(fieldcrops1000.inter.fit, terms = c("a_n1_r_z[all]"), type="fe.zi")
+
+dat.i <- dat.fc %>% dplyr::select(a_n1_r, a_n1_r_z) %>% distinct(round(dat.fc$a_n1_r_z, 3), .keep_all = TRUE) %>% dplyr::rename("x"="round(dat.fc$a_n1_r_z, 3)") %>% dplyr::select(-2)
+
+mydf <- left_join(mydf, dat.i)
+
+plot.rapeseed <- ggplot(data=mydf)+
+  geom_ribbon(aes(x=a_n1_r, ymin=conf.low,ymax=conf.high),alpha=0.3)+
+  geom_line(aes(x=a_n1_r, y=predicted))+
+  geom_line(aes(x=a_n1_r, y=conf.high), col='red', linetype='dashed')+
+  geom_line(aes(x=a_n1_r, y=conf.low), col='red', linetype='dashed')+
+  geom_point(data=dat.fc[dat.fc$nb_t>0,], aes(x=a_n1_r, y=nb_t), size=0.5, alpha=0.1)+
+  theme(
+    legend.position="none",
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"))+
+  xlab("Rapeseed area (previous year)")+
+  ylab("Mean count of mud-sealed tubes")+
+  theme(axis.title.x=element_text(size=11), axis.title.y=element_text(size=11))
+
+
+mydf <- ggpredict(fieldcrops1000.inter.fit, terms = c("a_p_z[all]"), type="fe.zi")
+
+dat.i <- dat.fc %>% dplyr::select(a_p, a_p_z) %>% distinct(round(dat.fc$a_p_z, 3), .keep_all = TRUE) %>% dplyr::rename("x"="round(dat.fc$a_p_z, 3)") %>% dplyr::select(-2)
+
+mydf <- left_join(mydf, dat.i)
+
+plot.meadow <- ggplot(data=mydf)+
+  geom_ribbon(aes(x=a_p, ymin=conf.low,ymax=conf.high),alpha=0.3)+
+  geom_line(aes(x=a_p, y=predicted))+
+  geom_line(aes(x=a_p, y=conf.high), col='red', linetype='dashed')+
+  geom_line(aes(x=a_p, y=conf.low), col='red', linetype='dashed')+
+  geom_point(data=dat.fc[dat.fc$nb_t>0,], aes(x=a_p, y=nb_t), size=0.5, alpha=0.1)+
+  theme(
+    legend.position="none",
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"))+
+  xlab("Permanent meadow area")+
+  ylab("Mean count of mud-sealed tubes")+
+  theme(axis.title.x=element_text(size=11), axis.title.y=element_text(size=11))
+
+mydf <- ggpredict(fieldcrops1000.inter.fit, terms = c("a_r_z[all]", "c"))
+
+mydf$group <- revalue(mydf$group, c("0CONVENTIONNELLE"="Conventional farming", "1BIOLOGIQUE"="Organic farming"))
+
+dat.i <- dat.fc %>% dplyr::select(a_r, a_r_z) %>% distinct(round(dat.fc$a_r_z, 3), .keep_all = TRUE) %>% dplyr::rename("x"="round(dat.fc$a_r_z, 3)") %>% dplyr::select(-2)
+
+mydf <- left_join(mydf, dat.i)
+
+plot.interac.rapeseed <- ggplot(data=mydf)+
+  geom_ribbon(aes(x=a_r, ymin=conf.low,ymax=conf.high, fill=group),alpha=0.3)+
+  geom_line(aes(x=a_r, y=predicted, color=group))+
+  geom_line(aes(x=a_r, y=conf.high, color=group), linetype='dashed')+
+  geom_line(aes(x=a_r, y=conf.low, color=group), linetype='dashed')+
+  theme(
+    legend.title= element_blank(),
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"))+
+  xlab("Rapeseed area (current year)")+
+  ylab("Mean count of mud-sealed tubes")+
+  theme(axis.title.x=element_text(size=11), axis.title.y=element_text(size=11))
+
+
+
+mydf <- ggpredict(fieldcrops1000.inter.fit, terms = c("a_s_z[all]", "c"))
+
+mydf$group <- revalue(mydf$group, c("0CONVENTIONNELLE"="Conventional farming", "1BIOLOGIQUE"="Organic farming"))
+
+dat.i <- dat.fc %>% dplyr::select(a_s, a_s_z) %>% distinct(round(dat.fc$a_s_z, 3), .keep_all = TRUE) %>% dplyr::rename("x"="round(dat.fc$a_s_z, 3)") %>% dplyr::select(-2)
+
+mydf <- left_join(mydf, dat.i)
+
+plot.interac.sunf <- ggplot(data=mydf)+
+  geom_ribbon(aes(x=a_s, ymin=conf.low,ymax=conf.high, fill=group),alpha=0.3)+
+  geom_line(aes(x=a_s, y=predicted, color=group))+
+  geom_line(aes(x=a_s, y=conf.high, color=group), linetype='dashed')+
+  geom_line(aes(x=a_s, y=conf.low, color=group), linetype='dashed')+
+  theme(
+    legend.position="none",
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"))+
+  coord_cartesian(ylim = c(0,13))+
+  xlab("Sunflower area (current year)")+
+  ylab("")+
+  theme(axis.title.x=element_text(size=11), axis.title.y=element_text(size=11))
+
+mydf <- ggpredict(meadows1000.fit, terms = c("a_n1_r_z[all]"), type="fe.zi")
+
+dat.i <- dat.pm %>% dplyr::select(a_n1_r, a_n1_r_z) %>% distinct(round(dat.pm$a_n1_r_z, 3), .keep_all = TRUE) %>% dplyr::rename("x"="round(dat.pm$a_n1_r_z, 3)") %>% dplyr::select(-2)
+
+mydf <- left_join(mydf, dat.i)
+
+plot.md.rapeseed <- ggplot(data=mydf)+
+  geom_ribbon(aes(x=a_n1_r, ymin=conf.low,ymax=conf.high),alpha=0.3)+
+  geom_line(aes(x=a_n1_r, y=predicted))+
+  geom_line(aes(x=a_n1_r, y=conf.high), col='red', linetype='dashed')+
+  geom_line(aes(x=a_n1_r, y=conf.low), col='red', linetype='dashed')+
+  geom_point(data=dat.pm[dat.pm$nb_t>0,], aes(x=a_n1_r, y=nb_t), size=0.5, alpha=0.1)+
+  theme(
+    legend.position="none",
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"))+
+  xlab("Rapeseed area (previous year)")+
+  ylab("Mean count of mud-sealed tubes")+
+  theme(axis.title.x=element_text(size=11), axis.title.y=element_text(size=11))
+
+
+
+dat.pm$pres <-0
+dat.pm[dat.pm$nb_t>0,]$pres <- 1
+
+mydf <- ggpredict(meadows1000.fit, terms = c("a_p_z[all]"), type="zi.prob")
+
+dat.i <- dat.pm %>% dplyr::select(a_p, a_p_z) %>% distinct(round(dat.pm$a_p_z, 3), .keep_all = TRUE) %>% dplyr::rename("x"="round(dat.pm$a_p_z, 3)") %>% dplyr::select(-2)
+
+mydf <- left_join(mydf, dat.i)
+
+plot.md.meadow <- ggplot(data=mydf)+
+  geom_ribbon(aes(x=a_p, ymin=1-conf.low,ymax=1-conf.high),alpha=0.3)+
+  geom_line(aes(x=a_p, y=1-predicted))+
+  geom_line(aes(x=a_p, y=1-conf.high), col='red', linetype='dashed')+
+  geom_line(aes(x=a_p, y=1-conf.low), col='red', linetype='dashed')+
+  geom_point(data=dat.pm, aes(x=a_p, y=pres), size=0.5, alpha=0.1)+
+  theme(
+    legend.position="none",
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"))+
+  xlab("Permanent meadow area")+
+  ylab("Probability of presence")+
+  theme(axis.title.x=element_text(size=11), axis.title.y=element_text(size=11))
+
+
+
+```
+
+
+
+```{r plots-rapeseed, echo = FALSE, fig.cap="Relationship between (\\textbf{a}) probability of presence of a mud-sealed tube or (\\textbf{b}) abundance of mud-sealed tubes, in trap nests set up in field crop edges, and rapeseed field area in the previous year. Line is (\\textbf{a}) the predicted zero-inflation probability or (\\textbf{b}) the mean model prediction conditioned on the fixed effects and the zero-inflation component. Ribbons are the confidence intervals.", fig.height=3.1, out.width='100%'}
+
+
+ggarrange(plot.zi.rapeseed, plot.rapeseed, ncol=2, labels=c("(a)","(b)"), font.label=list(size=9))
+
+```
+
+```{r plots-meadowedge, echo = FALSE, cache = FALSE, fig.cap="Landscape covariates of the presence and abundance of mud-sealed tubes in trapnests set up in meadow edges. (\\textbf{a}) Relationship between probability of presence of a mud-sealed tube and permanent meadow area. Line is the predicted zero-inflation probability. (\\textbf{b}) Relationship between abundance of mud-sealed tubes and rapeseed field area in the previous year. Line is the mean model prediction, conditioned on the fixed effects and the zero-inflation component. Ribbons are the confidence intervals.", fig.height=3.1, out.width='100%'}
+
+
+ggarrange(plot.md.meadow, plot.md.rapeseed, ncol=2, labels=c("(a)","(b)"), font.label=list(size=9))
+
+```
+
+```{r plots-interac, echo = FALSE, eval=T, fig.cap="Relationship between abundance of mud-sealed tubes and mass-flowering crop area (\\textbf{(a)} rapeseed,  or \\textbf{(b)} sunflower), for trap nests set up in field crop edges across different farming systems. Lines are the mean model predictions, conditioned on the fixed effects and the zero-inflation component. Ribbons are the confidence intervals.", fig.height=3.5, out.width='100%'}
+
+
+ggarrange(plot.interac.rapeseed, plot.interac.sunf, ncol=2, labels=c("(a)","(b)"), font.label=list(size=9), common.legend = TRUE, legend="bottom")
+
+```
+
+```{r plots-meadow, echo = FALSE,  fig.cap="Relationship between (\\textbf{a}) probability of presence of a mud-sealed tube or (\\textbf{b}) abundance of mud-sealed tubes, in trap nests set up in field crop edges, and permanent meadow area. Line is (\\textbf{a}) the predicted zero-inflation probability or (\\textbf{b}) the mean model prediction conditioned on the fixed effects and the zero-inflation component. Ribbons are the confidence intervals.", fig.height=3.1, out.width='100%'}
+
+
+ggarrange(plot.zi.meadow, plot.meadow, ncol=2, labels=c("(a)","(b)"), font.label=list(size=9))
+
+```
+
+
+
+
+
+## Relationship between area of mass-flowering crops and bee reproduction
+
+Solitary bee reproduction was positively correlated with the quantity of floral ressources provided by MFCs, only for rapeseed cultivated the year preceding observations (Table \ref{tab:output}, *area of rapeseed (previous year)*). 
+The area of rapeseed fields in the previous year was positively linked to the presence and the abundance of mud-sealed tubes in field crop edges (Fig. \ref{fig:plots-rapeseed}), and only to the abundance of mud-sealed tubes in meadow edges (Fig. \ref{fig:plots-meadowedge}b). In contrast, the area of rapeseed fields in the current year did not correlate significantly with bee reproduction, regardless of the model (Table \ref{tab:output}, *area of rapeseed (current year)*). 
+The area of sunflower fields in the previous year was negatively linked to the presence of mud-sealed tubes in field crop edges (Table \ref{tab:output}, *area of sunflower (previous year)*). In all other cases, there was no significant correlation with bee reproduction.
+
+In addition to the simple effect of previous year MFC area, we observed significant interactions of current-year MFC area with the farming system, although the latter did not have a significant simple effect (Table \ref{tab:output}, *area of rapeseed (cur. year):organic farming* and *area of sunflower (cur. year):organic farming*). These interactions differed between MFCs. With rapeseed, the relationship between mud-sealed tube abundance and coexisting crop area varied from slightly positive to negative in conventional vs. organic fields (Fig. \ref{fig:plots-interac}a). In contrast, with sunflower, the same relationship varied from slightly positive to strongly positive in conventional vs. organic fields (Fig. \ref{fig:plots-interac}b).
+
+## Relationship between landscape elements and bee reproduction
+
+The presence and abundance of mud-sealed tubes also correlated significantly with the area of semi-natural elements likely to provide food or nesting sources (Table \ref{tab:output}, *area of permanent meadows*). 
+Both presence and abundance of mud-sealed tubes were positively correlated with the area of permanent meadows in field crop edge (Fig. \ref{fig:plots-meadow}). In meadow edge, the presence of mud-sealed tubes, but not the abundance, was positively linked to permanent meadow area (Fig. \ref{fig:plots-meadowedge}a).
+Temporary meadows had more variable relationships with solitary bee reproduction. In meadow edges, temporary meadow area in the current year was positively related to solitary bee presence, but this area in the previous year was negatively related to the presence of solitary bees (Zero model in Table \ref{tab:output}, *area of temporary meadows*). The pattern was opposite for solitary bee abundance (Count model in Table \ref{tab:output}, *area of temporary meadows*).
+The presence of mud-sealed tubes was positively related to perimeter of forests in field crop edge, but the presence of hedgerows had no detectable correlation in any model. The proximity of a road was negatively related to the abundance of sealed tubes in meadow edges, and to the presence of sealed tubes in field crop edges.
+Finally, the type of the meadow was not significantly correlated with bee reproduction measured in meadow edges.
+
+
+## Control variables
+
+In all models, the number of days since the beginning of the year was positively related to the presence of mud-sealed tubes. Similarly, when significant, mean temperature and sum of precipitation correlated positively with both presence and abundance of mud-sealed tubes. 
+
+
+
+# Discussion
+
+## Inter-annual impacts of mass flowering crops on solitary bee nest building
+
+We focused our study on the inter-annual effects of landscape floral resources on the reproduction of one group of solitary bees (mostly *Osmia*). We evidenced a positive correlation between rapeseed field area in the previous year and solitary bee nesting, both in the zero model and the abundance model. Such correlation suggests that rapeseed may have a lasting year-to-year impact on bee reproduction. Whereas solitary bee nest-building was previously shown to increase during the period of mass-flowering [@jauker2012b], we did not find any significant impact of the area of rapeseed of the current year. Our results indicate that the previous year resources seem to benefit more to the nest-building and thus to support production of sexuals, a requirement to carry over benefits into the next season. 
+
+Rapeseed floral ressources may promote a higher reproductive potential the following year. Although both solitary bee males and females feed on flowers, only females invest in brood care. During spring, solitary bee females collect building materials and food for the nest, where the eggs are lain in individual cells. The larvae stay in the nest throughout the summer and winter, using pollen reserves, and emerge the following spring.  Reproductive success thus depends on the female's ability to provision nests with enough pollen mixture to ensure the emergence of enough offsprings the following year. Trap nests only provide information about the number of sealed tubes, and not about the actual number of cells and larvae in each tube. We do not know the actual number of viable offsprings that will emerge the following spring: in previous studies, it has been shown that sometimes no adults emerge from a nest, notably because all cells can be parasitized [e.g. @steffandewenter2002]. This may explain why solitary bee reproduction does not seem to depend on the area of rapeseed growing simultaneously: available floral resources during breeding season allow each female to lay more eggs in each tube (and to provision more pollen mixture for each larvae) which will result in a higher abundance in the next year, but not necessarily to seal more tubes because of the high cost of the nest plug [@rust1993]. This explains why the effect of current rapeseed cover is not significant. @riedinger2015 showed that rapeseed has a year-to-year effect by promoting a higher solitary bee abundance the following year. Here we show that this higher abundance of solitary bees, which we did not measure directly, also translates into higher reproductive potential, and indirect piece of evidence that rapeseed promotes solitary bee population (Fig. \ref{fig:schema}). This result is not obvious, since the rapeseed blooming period is limited, and since its pollen may be of minor importance for larvae diet [@coudrain2016]. Moreover, as a result of crop rotation, a high rapeseed cover one year may lead to a lack of floral resources in the landscape the following year. 
+
+\begin{figure}[]
+\includegraphics[width=1\linewidth]{solitary_bees_files/figure-latex/schema.png} \caption{Schematic summary of possible inter-annual effect of rapeseed floral resources on solitary bee reproduction. \emph{Osmia rufa} drawing by Valerie Littlewood, used with permission.}\label{fig:schema}
+\end{figure}
+
+Sunflower was differently correlated with bee reproduction. Unlike rapeseed that blooms in spring, sunflower is a summer crop. The fact that sunflower was
+not significantly related to bee reproduction in most cases may confirm that mud-sealed tubes mainly concern solitary bees active in early spring, such as *Osmia*, which are known to pollinate spring-blooming crops [@bosch2008]. 
+Sunflower area was negatively correlated with bee reproduction the next year only in the presence model, in field crop edges. This negative correlation between sunflower field area in the previous year and the presence of mud-sealed nests may be understood according to the same logic of interpretation as the one adopted in the case of the effects of rapeseed. Since sunflower is a summer crop sown in April, a high cover leads to a lack of floral resources during the spring and may therefore reduce the number of breeders in the next year. However, according to this hypothesis, the abudance of mud-sealed tubes  should also have been negatively correlated to sunflower field area in the previous year, and not only to the presence. 
+
+We did not find any correlation with the area of MFC growing simultaneously but the interactions between MFC cover in the current year and farming system were significant, in a surprising way. We expected local pesticide use intensity to have negative effects on bee reproduction, and even to counteract the positive effects of MFC floral resources and semi-natural habitats as demonstrated for pest biological control [@ricci2019]. Our analyses did not confirm these predictions, since farming system alone did not have any significant effect and conventional practices interacted positively with MFC resources (Fig. \ref{fig:plots-interac}). We did not measure the number of offsprings directly : pesticide exposure might not reduce nesting, but only reduce offspring production and alter the sex-ratio [@stuligross2020]. However, model outputs still confirm that local practices should be taken into account when assessing the influence of landscape context. Indeed, the landscape rapeseed area in the current year correlated differently with the number of solitary bee nests depending on local farming practices: no significant correlation under conventional agricultural practices, but a negative correlation under organic agricultural practices. These results can be interpreted hypothetically as follows. A neighbouring field under organic farming increases the number of weeds, which provide local floral resources without pesticides for wild bees [@bretagnolle2015]. This may support a more diverse bee community [@carrie2018], but perhaps with species that are less tolerant to pesticides used in the surrounding rapeseed fields [@woodcock2017]. Thus, a higher rapeseed cover in the landscape could have a negative impact on the bees present in the edge of an organic field. On the contrary, wild bees in the edge of a conventional field may be less diversified but more tolerant to pesticides. However, we did not study the whole wild bee community, but only solitary bees related to mud-sealed tubes (a majority of *Osmia*), which reduces the likelihood that closely-related species express different tolerance to pesticides. 
+In addition, we had information on the farming system only for the field in which the trap nests were placed, which seriously limits our ability to interpret any interaction between the effects of MFC area at the landscape scale and farming practices on solitary bee reproduction.
+
+## Importance of semi-natural elements and other permanent landscape features
+
+Both for the probability of presence and abundance of sealed tubes, the area of permanent meadows in the buffer strongly promoted solitary bee reproduction. This is consistent with previous studies which showed that loss of semi-natural habitats, i.e. land uses that are minimally managed and not cultivated for arable crops, is one of the main drivers of pollinator decline [@ricketts2008; @tscharntke2012]. As the dynamics of  bee populations are mainly driven by the amount of nesting and floral resources [@lonsdorf2009], semi-natural areas help maintain bee populations [@carre2009; @tscharntke2012] by providing both nesting and food opportunities. Remaining permanent meadows may also be important to offset bee decline caused by meadow-to-crop conversion that occurred long ago [@leprovost2020]. Moreover, these semi-natural habitats may decrease the negative effect of warmer temperature on bee populations [@papanikolaou2017] and buffer the harmful impacts of pesticides [@park2015]. 
+
+In both our models however, there was no evidence of a positive effect of the proximity of hedgerows. This is against our expectations, since it has been shown that abundance and diversity of wild bees are enhanced in field edges by hedgerows [@morandin2013]. This result may be due to the fact that this parameter is reported by farmers, whose definition of a hedgerow may differ and may include different types of vegetation and different stages of the hedgerows (recently planted or older,  more or less diversified).
+By contrast, our models evidenced a negative impact of the presence of a road. The amount of roads has already been shown to decrease bumblebee density [@kallioniemi2017], but road verges could also provide floral resources for wild bees [@henriksen2013]. 
+
+Semi-natural areas and mass-flowering crops do not have the same relative importance.
+In both zero models, the area of permanent meadows had a stronger positive effect than the area of rapeseed in the previous year. On the contrary, in both count models, the impact of rapeseed was slightly to really stronger. The presence of solitary bees seems to depend more on the semi-natural areas while their abundance seems to depend more on the ressources provided by rapeseed. Nevertheless, the permanent meadow area does not condition the positive effect of rapeseed: we tested the interaction between the two variables and we did not find any significant correlation (not shown).
+The presence of permenant meadows may be a important factor when a solitary bee chooses where to build its nest, because some wild flowers in meadows are in bloom before rapeseed fields and thus are more attractive. Once the nest is built, rapeseed will provide a massive amount of pollen and nectar to solitary bees active during its flowering period (such as *Osmia*), allowing each female to lay more eggs in each tube and thus increasing the number of breeders the following year. 
+
+
+# Conclusion: implications for pollinator conservation in agricultural landscapes
+
+Defining how agriculturally dominated landscape can be optimized for wild bees remains a complex subject.
+Our study shows that solitary bee reproduction can be positively and durably affected by rapeseed cover. This crop provides a massive amount of floral resources at a period  favorable for wild bees such as *Osmia*. Moreover, our study confirms that permanent meadows are essential to promote solitary bee populations. The positive effect of rapeseed cover may hold only if enough food and nesting sites are available in adjacent natural habitats. @ricketts2008 showed that flower‐visitor richness and visitation rate in croplands decline with distance from natural areas, and a lack of natural habitats can directly impact on crop yield [@garibaldi2011; @holzschuh2012]. Protecting natural habitats near crop fields seems to be a key solution to secure natural supply of pollination service, and moderate covers of rapeseed may help to maintain solitary bee populations. However, rapeseed  flowering period is short, thus pollinators still need floral resources from other crops and other semi-natural habitats [@martins2018], especially as we studied a small part of the wild bee community. The use of rapeseed for promoting wild pollinators needs also to be viewed bearing in mind the heavy pesticide application on this crop. 
+
+[@macivor2015]
+
+# References 
+
+<div id="refs"></div>
+
+\clearpage
+\appendix
+\setcounter{secnumdepth}{0}
+\setcounter{figure}{0}
+\setcounter{table}{0}
+\renewcommand{\thetable}{A\arabic{table}}
+\renewcommand{\thefigure}{A\arabic{figure}}
+
+# Appendix A 
+
+\begin{table}[H]
+\caption{Variables included in full models.}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Type}                          & \textbf{Name}                                      & \textbf{Source}                                   \\ \hline
+\multirow{4}{*}{\textit{Local}}        & Farming system (in field crop model)               & \multicolumn{1}{c}{\multirow{7}{*}{FBO}} \\
+                                       & Type of meadow (in meadow model)                   & \multicolumn{1}{c}{}                     \\
+                                       & Young hedgerow                                     & \multicolumn{1}{c}{}                     \\
+                                       & Old hedgerow                                       & \multicolumn{1}{c}{}                     \\
+\textit{}                              & Grassy strip                                       & \multicolumn{1}{c}{}                     \\
+\textit{}                              & Road                                               & \multicolumn{1}{c}{}                     \\
+\textit{}                              & Woody margin                                       & \multicolumn{1}{c}{}                     \\
+\textit{}                              & Ditch                                              &                                          \\ \hline
+\multirow{6}{*}{\textit{Landscape}}    & Rapeseed cover (current and previous year)         & \multirow{5}{*}{RPG}                     \\
+                                       & Sunflower cover (current and previous year)        &                                          \\
+                                       & Temporary meadow cover (current and previous year) &                                          \\
+                                       & Permanent meadow cover (current and previous year) &                                          \\
+                                       & Orchard cover (current and previous year)          &                                          \\
+                                       & Perimeter of forests                               & CLC                                      \\ \hline
+\multirow{3}{*}{\textit{Interactions}} & Rapeseed cover x Farming system                    &                                          \\
+                                       & Sunflower cover x Farming system                   &                                          \\
+                                       & Permanent meadow cover x Farming system            &                                          \\ \hline
+\textit{Control}                       & Temperature                                        & \multirow{2}{*}{E-OBS}                   \\
+                                       & Precipitation                                      &                                          \\
+                                       & Number of days until the observation date          & FBO                                     
+\end{tabular}
+\label{tab:appendixA}
+\end{center}
+\end{table}
+
+\clearpage
+
+# Appendix B
+
+```{r vif}
+
+fc_vif <- check_collinearity(fieldcrops1000.inter.fit)
+md_vif <- check_collinearity(meadows1000.fit)
+
+```
+
+\begin{table}[H]
+\caption{Variance inflation factors for solitary bee models, made with \emph{performance} package (Lüdecke,
+Makowski, Waggoner, \& Patil, \protect\hyperlink{ref-ludecke2020}{2020}).}
+\begin{center}
+\scalebox{0.79}{
+\begin{tabular}{l c c c c}
+\toprule
+ & \multicolumn{2}{c}{\bf{VIF - Zero model}} & \multicolumn{2}{c}{\bf{VIF - Count model}} \\
+ & Field crops & Meadows & Field crops & Meadows \\
+\midrule
+\addlinespace[0.1cm]
+\bf{Landscape variables} \\
+\addlinespace[0.1cm]
+  \quad Area of rapeseed (current year)                 & `r fc_vif$VIF[16]` & `r fc_vif$VIF[13]` & `r fc_vif$VIF[1]` & `r md_vif$VIF[1]`  \\
+  \quad Area of rapeseed (previous year)                & `r fc_vif$VIF[17]` & `r fc_vif$VIF[14]` & `r fc_vif$VIF[2]` & `r md_vif$VIF[2]`   \\
+  \quad Area of sunflower (current year)                & `r fc_vif$VIF[18]` & `r fc_vif$VIF[15]` & `r fc_vif$VIF[3]` & `r md_vif$VIF[3]`   \\
+  \quad Area of sunflower (previous year)               & `r fc_vif$VIF[19]` & `r fc_vif$VIF[16]` & `r fc_vif$VIF[4]`  & `r md_vif$VIF[4]`    \\
+  \quad Area of permanent meadows                       & `r fc_vif$VIF[21]` & `r fc_vif$VIF[18]` & `r fc_vif$VIF[6]` &  `r md_vif$VIF[6]`   \\
+  \quad \it Area of temporary meadows (current year)    & & `r fc_vif$VIF[19]` & & `r md_vif$VIF[7]`  \\
+  \quad \it Area of temporary meadows (previous year)   &  & `r fc_vif$VIF[20]` & &  `r md_vif$VIF[8]` \\
+\addlinespace[0.2cm]
+\bf{Local variables} \\
+\addlinespace[0.1cm]
+  \quad Organic farming                                 & `r fc_vif$VIF[20]` & & `r fc_vif$VIF[5]` &    \\
+  \quad Permanent meadow                                & & `r fc_vif$VIF[17]` &   &  `r md_vif$VIF[5]`  \\
+\addlinespace[0.1cm]
+  \quad \it Perimeter of forests                        & `r fc_vif$VIF[22]` & &  &                                  \\
+  \quad \it Road                                        &  `r fc_vif$VIF[24]` &  & &  `r md_vif$VIF[9]` \\
+  \quad \it Young hedgerow                              &   & `r fc_vif$VIF[21]` & &        \\
+  \quad \it Old hedgerow                                &  `r fc_vif$VIF[23]` & `r fc_vif$VIF[22]` & `r fc_vif$VIF[7]` &    \\
+\addlinespace[0.2cm]
+\bf{Interactions} \\
+\addlinespace[0.1cm]
+  \quad Area of rapeseed (cur. year):Organic farming    & `r fc_vif$VIF[28]`  &  & `r fc_vif$VIF[11]` &   \\
+  \quad Area of rapeseed (prev. year):Organic farming  & `r fc_vif$VIF[29]`  &  & `r fc_vif$VIF[12]` &   \\
+  \quad Area of sunflower (cur. year):Organic farming   & `r fc_vif$VIF[30]` &  & `r fc_vif$VIF[13]` &   \\
+  \quad Area of sunflower (prev. year):Organic farming  & `r fc_vif$VIF[31]`  &  & `r fc_vif$VIF[14]` &  \\
+  \quad Area of permanent meadows:Organic farming       &  `r fc_vif$VIF[32]` &  & `r fc_vif$VIF[15]` &       \\
+\addlinespace[0.2cm]
+\bf{Control variables} \\
+\addlinespace[0.1cm]
+  \quad Temperature                                     & `r fc_vif$VIF[25]` & `r fc_vif$VIF[23]` & `r fc_vif$VIF[8]` & `r md_vif$VIF[10]`    \\
+  \quad Precipitation                                   & `r fc_vif$VIF[26]` & `r fc_vif$VIF[24]` & `r fc_vif$VIF[9]` &  `r md_vif$VIF[11]`  \\
+  \quad Number of days                                  & `r fc_vif$VIF[27]` & `r fc_vif$VIF[25]` & `r fc_vif$VIF[10]` & `r md_vif$VIF[12]`   \\
+\end{tabular}
+}
+\label{tab:appendixB}
+\end{center}
+\end{table}
+
+\clearpage
+
+# Appendix C
+
+\begin{figure}[H]
+\includegraphics[width=1\linewidth]{solitary_bees_files/figure-latex/residual-sb.png} \caption{Residual diagnostics for solitary bee models, made with \emph{DHARMa} package (Hartig, \protect\hyperlink{ref-dharma2020}{2020}). Grey bars are simulated values, red line is fitted model.}\label{fig:residualsdiag}
+\end{figure}
+
+\clearpage
+
+# Appendix D
+
+```{r autocor}
+
+dat.fc$res <- simulation.fc$scaledResiduals
+
+data_autocor <- data.frame(ID = unique(dat.fc$ID))
+data_autocor$DW <- NA
+data_autocor$pvalueDW <- NA
+
+for(i in unique(dat.fc$ID)){
+  temp = dat.fc[dat.fc$ID == i,]
+  if(nrow(temp)>2){
+    test <- lmtest::dwtest(temp$res ~ 1, order.by = temp$nbjour)
+    data_autocor[data_autocor$ID==i,]$DW <- test$statistic
+    data_autocor[data_autocor$ID==i,]$pvalueDW <- test$p.value
+  }
+}
+
+data_autocor <- data_autocor[!is.na(data_autocor$pvalueDW),]
+
+
+autocor <- ggplot(data=data_autocor)+
+  geom_histogram(aes(x=pvalueDW), fill="#69b3a2", color="#e9ecef", alpha=0.9, bins=20)+
+  labs(x ="p-value of Durbin–Watson test", y = "Count")+ 
+  geom_vline(xintercept=0.05, linetype="dashed", color = "red")+
+  theme(
+  panel.border = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  panel.background = element_blank(),
+  axis.line = element_line(colour = "black")
+  )
+
+ggsave("landscape_ecology/solitary_bees/solitary_bees_files/figure-latex/autocor.pdf", plot=autocor)
+
+```
+
+To detect the presence of temporal autocorrelation in the residuals, we applied the Durbin Watson test to the sites which were monitored at least three consecutive years. Thus, we could test `r nrow(data_autocor)` plot/year couples over `r length(unique(Data_SB_model$ID))`.
+
+\begin{figure}[H]
+\includegraphics[width=1\linewidth]{solitary_bees_files/figure-latex/autocor} \caption{Distribution of Durbin-Watson test p-values, for residuals of fieldcrop edge model. Red dashed line is the 0.05 threshold.}\label{fig:DW}
+\end{figure}
+
+`r nrow(data_autocor[data_autocor$pvalueDW<0.05,])` plot/year couples have a p-value lower than 0.05. It's only `r round(nrow(data_autocor[data_autocor$pvalueDW<0.05,])/length(unique(Data_SB_model$ID))*100,2)`% of plot/year couples.
